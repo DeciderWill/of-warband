@@ -1,17 +1,55 @@
-FROM ubuntu:14.04
-MAINTAINER Outflank Ltd.
-RUN dpkg --add-architecture i386
-RUN apt-get update
-RUN apt-get install --no-install-recommends --assume-yes wine -qqy x11-apps
-RUN apt-get install --no-install-recommends --assume-yes screen unzip wget
-RUN apt-get install --no-install-recommends --assume-yes dos2unix
-RUN wget http://s3.amazonaws.com/gameserver-dedicated/mb_warband_dedicated_1158.zip
-ENV WARBAND_DIR /opt/warband
+FROM suchja/x11client:latest
+
+# Inspired by monokrome/wine
+ENV WINE_MONO_VERSION 0.0.8
+USER root
+
+# Install some tools required for creating the image
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends \
+		curl \
+		unzip \
+		ca-certificates \
+		wget \
+		screen \
+		dos2unix
+
+# Install wine and related packages
+RUN dpkg --add-architecture i386 \
+		&& apt-get update \
+		&& apt-get install -y --no-install-recommends \
+				wine \
+				wine32 \
+		&& rm -rf /var/lib/apt/lists/*
+
+# Use the latest version of winetricks
+RUN curl -SL 'https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks' -o /usr/local/bin/winetricks \
+		&& chmod +x /usr/local/bin/winetricks
+
+# Get latest version of mono for wine
+RUN mkdir -p /usr/share/wine/mono \
+	&& curl -SL 'http://sourceforge.net/projects/wine/files/Wine%20Mono/$WINE_MONO_VERSION/wine-mono-$WINE_MONO_VERSION.msi/download' -o /usr/share/wine/mono/wine-mono-$WINE_MONO_VERSION.msi \
+	&& chmod +x /usr/share/wine/mono/wine-mono-$WINE_MONO_VERSION.msi
+
+# Wine really doesn't like to be run as root, so let's use a non-root user
+ENV HOME /home/xclient
+ENV WINEPREFIX /home/xclient/.wine
+ENV WINEARCH win32
+
+# Use xclient's home dir as working dir
+WORKDIR /home/xclient
+RUN wine --version
+RUN wineconsole
+RUN wget http://s3.amazonaws.com/gameserver-dedicated/mb_warband_dedicated_1158.zip -P /home/xclient
+ENV WARBAND_DIR /home/xclient
+RUN ls
 COPY scripts $WARBAND_DIR
 RUN unzip mb_warband_dedicated_1158.zip
 RUN ls
 RUN cd Mount*
 RUN ls
 EXPOSE 7240/udp
+RUN chmod -R 777 /home/
+RUN chmod +x run.sh
 RUN dos2unix $WARBAND_DIR/run.sh
 ENTRYPOINT bash $WARBAND_DIR/run.sh
